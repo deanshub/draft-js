@@ -45,6 +45,7 @@ const RESOLVE_DELAY = 20;
 let resolved = false;
 let stillComposing = false;
 let textInputData = '';
+let formerTextInputData = '';
 
 var DraftEditorCompositionHandler = {
   onBeforeInput: function(editor: DraftEditor, e: SyntheticInputEvent<>): void {
@@ -55,7 +56,8 @@ var DraftEditorCompositionHandler = {
    * A `compositionstart` event has fired while we're still in composition
    * mode. Continue the current composition session to prevent a re-render.
    */
-  onCompositionStart: function(editor: DraftEditor): void {
+  onCompositionStart: function(editor: DraftEditor, e: SyntheticInputEvent): void {
+    formerTextInputData = e.data;
     stillComposing = true;
   },
 
@@ -139,6 +141,9 @@ var DraftEditorCompositionHandler = {
     const composedChars = textInputData;
     textInputData = '';
 
+    const formerComposedChars = formerTextInputData;
+    formerTextInputData = '';
+
     const editorState = EditorState.set(editor._latestEditorState, {
       inCompositionMode: false,
     });
@@ -161,6 +166,22 @@ var DraftEditorCompositionHandler = {
 
     editor.exitCurrentMode();
 
+    let contentState = editorState.getCurrentContent();
+    let selection = editorState.getSelection();
+    if (formerComposedChars && selection.isCollapsed()) {
+      let anchorOffset = selection.getAnchorOffset() - formerComposedChars.length;
+      if (anchorOffset < 0) {
+        anchorOffset = 0;
+      }
+      const toRemoveSel = selection.merge({anchorOffset});
+      contentState = DraftModifier.removeRange(
+        editorState.getCurrentContent(),
+        toRemoveSel,
+        'backward',
+      );
+      selection = contentState.getSelectionAfter();
+    }
+
     if (composedChars) {
       if (
         DraftFeatureFlags.draft_handlebeforeinput_composed_text &&
@@ -173,9 +194,9 @@ var DraftEditorCompositionHandler = {
       }
       // If characters have been composed, re-rendering with the update
       // is sufficient to reset the editor.
-      const contentState = DraftModifier.replaceText(
-        editorState.getCurrentContent(),
-        editorState.getSelection(),
+      contentState = DraftModifier.replaceText(
+        contentState,
+        selection,
         composedChars,
         currentStyle,
         entityKey,
