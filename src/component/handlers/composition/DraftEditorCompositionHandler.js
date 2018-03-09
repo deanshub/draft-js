@@ -44,11 +44,17 @@ const RESOLVE_DELAY = 20;
  */
 let resolved = false;
 let stillComposing = false;
+let compositionUpdates = false;
 let textInputData = '';
-let formerTextInputData = '';
 
 var DraftEditorCompositionHandler = {
   onBeforeInput: function(editor: DraftEditor, e: SyntheticInputEvent<>): void {
+    if (compositionUpdates) {
+      // We only want to use the `beforeinput` event if the `compositionupdate`
+      // one isn't supported. We know that if it is, it fires before
+      // `beforeinput`.
+      return;
+    }
     textInputData = (textInputData || '') + e.data;
   },
 
@@ -56,9 +62,20 @@ var DraftEditorCompositionHandler = {
    * A `compositionstart` event has fired while we're still in composition
    * mode. Continue the current composition session to prevent a re-render.
    */
-  onCompositionStart: function(editor: DraftEditor, e: SyntheticInputEvent): void {
-    formerTextInputData = e.data;
+  onCompositionStart: function(editor: DraftEditor): void {
     stillComposing = true;
+  },
+
+  /**
+  * A `compositionupdate` event has fired. Update the current composition
+  * session.
+  */
+  onCompositionUpdate: function(
+    editor: DraftEditor,
+    e: SyntheticInputEvent,
+  ): void {
+    compositionUpdates = true;
+    textInputData = e.data;
   },
 
   /**
@@ -141,9 +158,6 @@ var DraftEditorCompositionHandler = {
     const composedChars = textInputData;
     textInputData = '';
 
-    const formerComposedChars = formerTextInputData;
-    formerTextInputData = '';
-
     const editorState = EditorState.set(editor._latestEditorState, {
       inCompositionMode: false,
     });
@@ -166,22 +180,6 @@ var DraftEditorCompositionHandler = {
 
     editor.exitCurrentMode();
 
-    let contentState = editorState.getCurrentContent();
-    let selection = editorState.getSelection();
-    if (formerComposedChars && selection.isCollapsed()) {
-      let anchorOffset = selection.getAnchorOffset() - formerComposedChars.length;
-      if (anchorOffset < 0) {
-        anchorOffset = 0;
-      }
-      const toRemoveSel = selection.merge({anchorOffset});
-      contentState = DraftModifier.removeRange(
-        editorState.getCurrentContent(),
-        toRemoveSel,
-        'backward',
-      );
-      selection = contentState.getSelectionAfter();
-    }
-
     if (composedChars) {
       if (
         DraftFeatureFlags.draft_handlebeforeinput_composed_text &&
@@ -194,9 +192,9 @@ var DraftEditorCompositionHandler = {
       }
       // If characters have been composed, re-rendering with the update
       // is sufficient to reset the editor.
-      contentState = DraftModifier.replaceText(
-        contentState,
-        selection,
+      const contentState = DraftModifier.replaceText(
+        editorState.getCurrentContent(),
+        editorState.getSelection(),
         composedChars,
         currentStyle,
         entityKey,

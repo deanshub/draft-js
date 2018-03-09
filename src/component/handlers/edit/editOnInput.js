@@ -25,7 +25,6 @@ var findAncestorOffsetKey = require('findAncestorOffsetKey');
 var nullthrows = require('nullthrows');
 
 var isGecko = UserAgent.isEngine('Gecko');
-var isAndroid = UserAgent.isPlatform('Android');
 
 var DOUBLE_NEWLINE = '\n\n';
 
@@ -147,7 +146,7 @@ function editOnInput(editor: DraftEditor): void {
 
   var anchorOffset, focusOffset, startOffset, endOffset;
 
-  if (isAndroid || isGecko) {
+  if (isGecko) {
     // Firefox selection does not change while the context menu is open, so
     // we preserve the anchor and focus values of the DOM selection.
     anchorOffset = domSelection.anchorOffset;
